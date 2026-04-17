@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cloud Bus Ticket</title>
+    <style>
+        body { font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px; }
+        input, button { padding: 10px; margin: 10px 0; width: 100%; }
+        button { background: blue; color: white; border: none; cursor: pointer; font-size: 16px; }
+        #result { margin-top: 20px; padding: 10px; background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>Buy Bus Ticket</h1>
+    <p>Price: $5.00</p>
+    
+    <input type="email" id="email" placeholder="Your email address" required>
+    <button id="buyBtn">Buy Ticket</button>
+    
+    <div id="result"></div>
+
+    <script>
+        const API_URL = 'https://z0t1bhhcn6.execute-api.eu-north-1.amazonaws.com/prod';
+        
+        document.getElementById('buyBtn').onclick = async () => {
+            const email = document.getElementById('email').value;
+            
+            if (!email) {
+                alert('Please enter your email');
+                return;
+            }
+            
+            document.getElementById('result').innerHTML = 'Processing...';
+            
+            try {
+                const response = await fetch(`${API_URL}/create_checkout`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                const data = await response.json();
+                
+                // REDIRECT to Stripe checkout page
+                if (data.url) {
+                    window.location.href = data.url;
+                } else if (data.error) {
+                    document.getElementById('result').innerHTML = 'Error: ' + data.error;
+                } else {
+                    document.getElementById('result').innerHTML = 'Unexpected response: ' + JSON.stringify(data);
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        };
+    </script>
+</body>
+</html>
