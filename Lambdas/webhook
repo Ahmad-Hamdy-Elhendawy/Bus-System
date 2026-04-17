@@ -1,0 +1,108 @@
+import json
+import os
+import stripe
+import boto3
+import secrets
+from datetime import datetime, timedelta
+
+print("Loading webhook Lambda...")
+
+dynamodb = boto3.resource('dynamodb')
+table_name = 'Tickets'
+table = dynamodb.Table(table_name)
+print(f"Using DynamoDB table: {table_name}")
+
+webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', 'MISSING')
+print(f"Webhook secret configured: {'YES' if webhook_secret != 'MISSING' else 'NO'}")
+
+def generate_ticket_code():
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return ''.join(secrets.choice(alphabet) for _ in range(12))
+
+def lambda_handler(event, context):
+    print("Lambda invoked!")
+    
+    try:
+        # Handle both direct Stripe events and API Gateway wrapped events
+        if 'body' in event:
+            # Coming from API Gateway
+            print("Processing API Gateway wrapped event")
+            body = event['body']
+            if event.get('isBase64Encoded', False):
+                import base64
+                body = base64.b64decode(body).decode('utf-8')
+                print("Decoded base64 body")
+            
+            sig_header = event['headers'].get('Stripe-Signature', '')
+            print(f"Signature header from API Gateway: {'YES' if sig_header else 'NO'}")
+            
+            # Construct the Stripe event
+            stripe_event = stripe.Webhook.construct_event(body, sig_header, webhook_secret)
+            
+        elif 'type' in event and 'data' in event:
+            # Coming directly from Stripe test webhook
+            print("Processing direct Stripe test event")
+            stripe_event = event
+            
+        else:
+            print(f"Unknown event format. Keys: {event.keys()}")
+            return {'statusCode': 400, 'body': json.dumps({'error': 'Unknown event format'})}
+        
+        print(f"Event type: {stripe_event.get('type')}")
+        
+        # Handle checkout.session.completed
+        if stripe_event.get('type') == 'checkout.session.completed':
+            print("Processing checkout.session.completed")
+            
+            # Extract session data (different paths for different formats)
+            if 'data' in stripe_event and 'object' in stripe_event['data']:
+                session = stripe_event['data']['object']
+            elif 'object' in stripe_event:
+                session = stripe_event['object']
+            else:
+                session = stripe_event
+            
+            # Get user email from metadata
+            if 'metadata' in session:
+                user_email = session['metadata'].get('user_email')
+            else:
+                user_email = None
+            
+            print(f"User email: {user_email}")
+            
+            if not user_email:
+                print("WARNING: No user_email found in metadata")
+                # Try to get from customer email
+                user_email = session.get('customer_email', 'unknown@example.com')
+            
+            # Generate ticket
+            ticket_code = generate_ticket_code()
+            created_at = datetime.utcnow().isoformat()
+            expires_at = (datetime.utcnow() + timedelta(days=1)).isoformat()
+            
+            print(f"Attempting to save ticket: {ticket_code}")
+            
+            # Save to DynamoDB
+            table.put_item(
+                Item={
+                    'ticket_code': ticket_code,
+                    'user_email': user_email,
+                    'created_at': created_at,
+                    'expires_at': expires_at,
+                    'used': False,
+                    'used_at': None
+                }
+            )
+            
+            print(f" Ticket created: {ticket_code} for {user_email}")
+            
+        else:
+            print(f"Ignoring event type: {stripe_event.get('type')}")
+        
+        return {'statusCode': 200, 'body': json.dumps({'status': 'success'})}
+        
+    except Exception as e:
+        print(f"❌ ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
