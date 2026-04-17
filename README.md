@@ -22,5 +22,5 @@ A serverless, cloud-native bus ticket system that prevents ticket loss, theft, a
 
 ## Architecture Diagram
 
-![Architecture]https://github.com/Ahmad-Hamdy-Elhendawy/Bus-System/blob/main/Architecture.png?raw=true)
+![Architecture](https://github.com/Ahmad-Hamdy-Elhendawy/Bus-System/blob/main/Architecture.png?raw=true)
 
