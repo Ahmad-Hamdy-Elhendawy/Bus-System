@@ -1,0 +1,61 @@
+import json
+import os
+import stripe
+import traceback
+
+stripe.api_key = os.environ['STRIPE_SECRET_KEY']
+
+def lambda_handler(event, context):
+    try:
+        print("Event received:", json.dumps(event))
+        
+        if 'body' in event:
+            body = json.loads(event['body'])
+        else:
+            body = event
+        
+        user_email = body.get('email')
+        print(f"User email: {user_email}")
+        
+        if not user_email:
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Email is required'})
+            }
+        
+        print("Creating Stripe checkout session...")
+        
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': 'Ticket',
+                    },
+                    'unit_amount': 500,
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url='http://bus-ticket.s3-website.eu-north-1.amazonaws.com/success.html',
+            cancel_url='http://bus-ticket.s3-website.eu-north-1.amazonaws.com/cancel.html',
+            metadata={'user_email': user_email}
+        )
+        
+        print(f"Session created: {checkout_session.id}")
+        
+        return {
+            'statusCode': 200,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'url': checkout_session.url})
+        }
+        
+    except Exception as e:
+        print("ERROR:", str(e))
+        print(traceback.format_exc())
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'error': str(e)})
+        }
