@@ -1,0 +1,96 @@
+import json
+import boto3
+from datetime import datetime
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('Tickets')
+
+def lambda_handler(event, context):
+    print("Lambda invoked!")
+    print(f"Event keys: {event.keys()}")
+    
+    try:
+        # Handle both direct test events and API Gateway wrapped events
+        if 'body' in event:
+            # Coming from API Gateway
+            print("Processing API Gateway wrapped event")
+            body = json.loads(event['body'])
+        elif 'code' in event:
+            # Coming directly from test
+            print("Processing direct test event")
+            body = event
+        else:
+            print(f"Unknown event format. Keys: {event.keys()}")
+            return {
+                'statusCode': 400,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': False, 'reason': 'Unknown event format'})
+            }
+        
+        ticket_code = body.get('code')
+        print(f"Ticket code: {ticket_code}")
+        
+        if not ticket_code:
+            return {
+                'statusCode': 400,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': False, 'reason': 'Ticket code required'})
+            }
+        
+        # Look up ticket in DynamoDB
+        response = table.get_item(Key={'ticket_code': ticket_code})
+        ticket = response.get('Item')
+        
+        if not ticket:
+            return {
+                'statusCode': 200,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': False, 'reason': 'Ticket not found'})
+            }
+        
+        if ticket.get('used', False):
+            return {
+                'statusCode': 200,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': False, 'reason': 'Ticket already used'})
+            }
+        
+        expires_at = datetime.fromisoformat(ticket['expires_at'])
+        if expires_at < datetime.utcnow():
+            return {
+                'statusCode': 200,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'valid': False, 'reason': 'Ticket expired'})
+            }
+        
+        # Mark as used
+        table.update_item(
+            Key={'ticket_code': ticket_code},
+            UpdateExpression='SET #used = :true, used_at = :now',
+            ExpressionAttributeNames={'#used': 'used'},
+            ExpressionAttributeValues={
+                ':true': True,
+                ':now': datetime.utcnow().isoformat()
+            }
+        )
+        
+        print(f"✅ Ticket {ticket_code} validated and marked used")
+        
+        return {
+            'statusCode': 200,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({
+                'valid': True,
+                'user_email': ticket['user_email']
+            })
+        }
+        
+    except Exception as e:
+        print(f"❌ ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'valid': False, 'reason': f'Server error: {str(e)}'})
+        }
