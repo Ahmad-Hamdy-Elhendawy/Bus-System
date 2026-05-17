@@ -1,0 +1,10 @@
+# Terraform files that should never be committed
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Secrets
+*.pem
+*.key
