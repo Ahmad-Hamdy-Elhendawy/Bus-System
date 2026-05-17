@@ -1,0 +1,6 @@
+
+# Example variables file - Copy to terraform.tfvars and fill in
+# ---------------------------------------------------------------------
+
+stripe_secret_key     = "sk_test_xxxxxxxxxxxxxxxxxxxxxxxx"
+stripe_webhook_secret = "whsec_xxxxxxxxxxxxxxxxxxxxxxxx"
